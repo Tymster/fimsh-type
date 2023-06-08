@@ -1,0 +1,104 @@
+mod app;
+use std::io::{stdout, Write};
+use std::time::Instant;
+use std::{thread::sleep, time::Duration};
+use termion::async_stdin;
+use termion::clear;
+use termion::color::Fg;
+use termion::color::{Green, Red, Reset};
+use termion::cursor::Goto;
+use termion::event::Key;
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
+use termion::screen::IntoAlternateScreen;
+use termion::style::Faint;
+struct App {
+    phrase: Vec<Thing>,
+    index: usize,
+    status: bool,
+    started: Option<Instant>,
+}
+enum Thing {
+    Correct(char),
+    Wrong(char),
+    NotYet(char),
+}
+impl App {
+    fn new() -> Self {
+        Self {
+            phrase: vec![],
+            index: 0,
+            status: true,
+            started: None,
+        }
+    }
+    fn new_phrase<T: Into<String>>(&mut self, phrase: T) {
+        self.phrase = phrase.into().chars().map(|c| Thing::NotYet(c)).collect();
+    }
+}
+fn main() {
+    let mut stdout = stdout()
+        .into_raw_mode()
+        .expect("Failed to enter raw mode")
+        .into_alternate_screen()
+        .expect("Failed to enter alternate mode");
+    let mut stdin = async_stdin().keys();
+
+    let mut app = App::new();
+    app.new_phrase("The Quick Brown Fox jumped over the lazy dog");
+
+    loop {
+        write!(stdout, "{}{}", clear::All, Goto(1, 1)).unwrap();
+        if let Some(Ok(key)) = stdin.next() {
+            match key {
+                Key::Ctrl('c') => break,
+                Key::Char(c) => {
+                    if app.index >= app.phrase.len() {
+                        app.status = false;
+                    }
+                    if let Thing::NotYet(char) = app.phrase[app.index] {
+                        if c == char {
+                            app.phrase[app.index] = Thing::Correct(char);
+                        } else {
+                            app.phrase[app.index] = Thing::Wrong(char);
+                        }
+                        app.index = (app.index + 1).clamp(0, app.phrase.len() - 1);
+                    }
+                }
+                Key::Backspace => {
+                    let len = app.phrase.len();
+                    match app.phrase[(app.index - 1).clamp(0, len)] {
+                        Thing::Correct(_) => {}
+                        Thing::Wrong(c) => {
+                            app.phrase[(app.index - 1).clamp(0, len)] = Thing::NotYet(c);
+                            app.index -= 1;
+                        }
+                        _ => {}
+                    }
+                }
+                e => write!(stdout, "{:?}\r\n", e).unwrap(),
+            };
+        }
+        write!(
+            stdout,
+            "{}{}{}",
+            app,
+            termion::cursor::SteadyBar,
+            Goto(app.index as u16 + 1, 1)
+        )
+        .unwrap();
+        stdout.flush().unwrap();
+    }
+}
+impl std::fmt::Display for App {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        for char in self.phrase.iter() {
+            match char {
+                Thing::Correct(c) => write!(f, "{}{c}{}", Fg(Green), Fg(Reset))?,
+                Thing::Wrong(c) => write!(f, "{}{c}{}", Fg(Red), Fg(Reset))?,
+                Thing::NotYet(c) => write!(f, "{}{c}{}", Faint, Fg(Reset))?,
+            }
+        }
+        Ok(())
+    }
+}
