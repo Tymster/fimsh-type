@@ -1,6 +1,8 @@
 use rand::Rng;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 use termion::color::{Fg, Green, Red, Reset};
+use termion::cursor;
 use termion::style::Faint;
 const PHRASES: [&str; 2] = [
     "balls on a tree",
@@ -12,6 +14,11 @@ pub struct App {
     pub index: usize,
     pub start: Instant,
     pub end: Instant,
+    pub history: Vec<History>,
+}
+pub struct History {
+    accuracy: f32,
+    wpm: f32,
 }
 #[derive(Debug, Clone, Copy)]
 pub enum CharStatus {
@@ -20,9 +27,9 @@ pub enum CharStatus {
     NotYet,
 }
 pub enum AppMode {
-    Typing, //Index into phrase , starting
+    Typing,
     Menu,
-    Results, // (How long took to write , how many words in phrase)
+    Results,
 }
 impl App {
     pub fn new() -> Self {
@@ -32,6 +39,7 @@ impl App {
             index: 0,
             start: Instant::now(),
             end: Instant::now(),
+            history: vec![],
         }
     }
     pub fn typing(&mut self) {
@@ -45,28 +53,24 @@ impl App {
         }
     }
 
-    pub fn results(&mut self) -> f32 {
+    pub fn results(&mut self) {
         self.mode = AppMode::Results;
         self.end = Instant::now();
-
-        self.current_phrase
-            .iter()
-            .map(|f| f.0)
-            .collect::<String>()
-            .split(" ")
-            .collect::<Vec<&str>>()
-            .len() as f32
-            * ((self.start - Instant::now()).as_secs() * 60) as f32
+        let (wpm, accuracy) = wpm(self.current_phrase.clone(), self.end - self.start);
+        self.history.push(History { accuracy, wpm })
     }
     pub fn menu(&mut self) {
         self.mode = AppMode::Menu;
         self.current_phrase = vec![];
+        self.index = 0;
     }
 }
 impl std::fmt::Display for App {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         match &self.mode {
             AppMode::Typing => {
+                write!(f, "{}", cursor::Show)?;
+
                 for char in &self.current_phrase {
                     match char.1 {
                         CharStatus::Correct => write!(f, "{}{}{}", Fg(Green), char.0, Fg(Reset))?,
@@ -74,42 +78,51 @@ impl std::fmt::Display for App {
                         CharStatus::NotYet => write!(f, "{}{}{}", Faint, char.0, Fg(Reset))?,
                     }
                 }
+                if self.index != 0 {
+                    write!(
+                        f,
+                        "\r\n{}",
+                        ((Instant::now() - self.start).as_secs_f64() * 100.0).round() / 100.0
+                    )?;
+                } else {
+                    write!(f, "\r\n0s")?;
+                }
             }
-            AppMode::Menu => {}
+            AppMode::Menu => {
+                write!(f, "Press T to start typing\r\n")?;
+                for n in &self.history {
+                    write!(f, "Wpm : {} Accuracy : {}%\r\n", n.wpm, n.accuracy)?;
+                }
+            }
             AppMode::Results => {
-                let mut temp = self.current_phrase.clone();
-                let mut words = vec![];
-                loop {
-                    if !temp.iter().any(|c| c.0 == ' ') {
-                        break;
-                    }
-                    let word: Vec<(char, CharStatus)> =
-                        temp.iter().take_while(|c| c.0 != ' ').cloned().collect();
-                    let skip = word.len();
-                    temp = temp
-                        .iter()
-                        .skip(skip + 1)
-                        .skip_while(|c| c.0 == ' ')
-                        .cloned()
-                        .collect();
-
-                    words.push(word);
-                }
-
-                let mut correct_count: f32 = 0.0;
-                for word in words.iter() {
-                    if word.iter().all(|(_, s)| match s {
-                        CharStatus::Correct => true,
-                        _ => false,
-                    }) {
-                        correct_count += 1.0;
-                    }
-                }
-                let seconds = (self.end - self.start).as_secs_f32() / 60.0;
-                let wpm = correct_count / seconds;
-                write!(f, "You wpm was : {:?}", (wpm * 100.0).round() / 100.0)?;
+                write!(f, "{}", cursor::Hide)?;
+                let (wpm, accuracy) = wpm(self.current_phrase.clone(), self.end - self.start);
+                write!(
+                    f,
+                    "Press Enter to go back to menu\r\nWpm : {:?}\r\nAccuracy : {}%",
+                    wpm, accuracy
+                )?;
             }
         };
         Ok(())
     }
+}
+pub fn wpm(words: Vec<(char, CharStatus)>, duration: Duration) -> (f32, f32) {
+    let accuracy = words
+        .iter()
+        .filter(|(_, s)| match s {
+            CharStatus::Correct => true,
+            _ => false,
+        })
+        .count() as f32
+        / words.len() as f32;
+
+    let word_count = words
+        .split(|(c, _)| if c == &' ' { return true } else { return false })
+        .count() as f32;
+
+    (
+        (((word_count / (duration.as_secs_f32() / 60.0)) * accuracy) * 100.0).round() / 100.0,
+        (accuracy * 10000.0).round() / 100.0,
+    )
 }

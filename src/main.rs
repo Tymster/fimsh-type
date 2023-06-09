@@ -9,7 +9,7 @@ use termion::{raw::IntoRawMode, screen::IntoAlternateScreen};
 mod app;
 use app::AppMode::*;
 use app::CharStatus;
-use app::{App, AppMode};
+use app::App ;
 fn main() -> Result<(), std::io::Error> {
     let mut stdout = stdout()
         .into_raw_mode()
@@ -17,7 +17,6 @@ fn main() -> Result<(), std::io::Error> {
         .into_alternate_screen()
         .expect("Failed to enter alternate mode");
     let mut stdin = async_stdin().keys();
-    write!(stdout, "{}", clear::All)?;
 
     let mut app = App::new();
     loop {
@@ -67,17 +66,16 @@ fn main() -> Result<(), std::io::Error> {
         }
         write!(
             stdout,
-            "{}{}{}{}{}{}{}",
+            "{}{}{}{}{}{}",
             Goto(1,1),
             clear::All,
             cursor::Hide,
             app,
-            cursor::Show,
             Goto(app.index as u16 + 1, 1),
             cursor::SteadyBar
         )?;
         stdout.flush()?;
-        std::thread::sleep(std::time::Duration::from_millis(17));
+        std::thread::sleep(std::time::Duration::from_millis(19));
     }
 
     Ok(())
