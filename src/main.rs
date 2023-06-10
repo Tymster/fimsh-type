@@ -7,6 +7,7 @@ use termion::event::Key;
 use termion::{async_stdin, input::TermRead};
 use termion::{raw::IntoRawMode, screen::IntoAlternateScreen};
 mod app;
+mod config;
 use app::AppMode::*;
 use app::CharStatus;
 use app::App ;
@@ -23,12 +24,16 @@ fn main() -> Result<(), std::io::Error> {
 
         if let Some(Ok(key)) = stdin.next() {
             match key {
-                Key::Ctrl('c') => break,
+                Key::Ctrl('c') => {
+                    write!(stdout , "{}" , cursor::Restore)?;
+                    break
+                },
                 Key::Char('\n') if let Results = app.mode => app.menu(), //set mode to menu
                 Key::Char('t') if let Menu = app.mode => app.typing(), //set mode to typing
                 Key::Right if let Menu = app.mode => {
                     break; //doing something later
                 }
+                Key::Esc if let Typing | Results = app.mode => app.menu(),
                 Key::Char(c) if let Typing = app.mode => {
                     if app.index == 0 {
                         app.start =std::time::Instant::now(); //start the timer when types first char
@@ -49,15 +54,16 @@ fn main() -> Result<(), std::io::Error> {
                     
                 },
                 Key::Backspace if let Typing = app.mode => {
+                    if app.index > 0{
+                        let len = app.current_phrase.len();
+                        let index=  (app.index - 1).clamp(0 , len);
+                        let char = &app.current_phrase[index];
 
-                    let len = app.current_phrase.len();
-
-                    let char = &app.current_phrase[(app.index - 1).clamp(0 , len)];
-                   if let CharStatus::Wrong =  char.1  {
-                        app.current_phrase[(app.index - 1).clamp(0 , len)] = (char.0 , CharStatus::NotYet);
-                        app.index -= 1;
-                            
-                    };
+                        if let CharStatus::Wrong = char.1  {
+                            app.current_phrase[index] = (char.0 , CharStatus::NotYet);
+                            app.index = index;           
+                        };
+                    }
                 }
                 e => {
                     println!("{:?}", e);
@@ -66,17 +72,16 @@ fn main() -> Result<(), std::io::Error> {
         }
         write!(
             stdout,
-            "{}{}{}{}{}{}",
+            "{}{}{}{}{}",
             Goto(1,1),
             clear::All,
             cursor::Hide,
             app,
             Goto(app.index as u16 + 1, 1),
-            cursor::SteadyBar
         )?;
         stdout.flush()?;
         std::thread::sleep(std::time::Duration::from_millis(19));
     }
-
+    write!(stdout, "{}{}" , clear::All , cursor::Restore)?;
     Ok(())
 }

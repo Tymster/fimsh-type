@@ -1,13 +1,10 @@
+use crate::config::PHRASES;
 use rand::Rng;
 use std::time::Duration;
 use std::time::Instant;
 use termion::color::{Fg, Green, Red, Reset};
 use termion::cursor;
 use termion::style::Faint;
-const PHRASES: [&str; 2] = [
-    "balls on a tree",
-    "the quick brown fox jumped over the lazy dog",
-];
 pub struct App {
     pub mode: AppMode,
     pub current_phrase: Vec<(char, CharStatus)>,
@@ -69,7 +66,7 @@ impl std::fmt::Display for App {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         match &self.mode {
             AppMode::Typing => {
-                write!(f, "{}", cursor::Show)?;
+                write!(f, "{}{}", cursor::Show, cursor::BlinkingBar)?;
 
                 for char in &self.current_phrase {
                     match char.1 {
@@ -89,6 +86,7 @@ impl std::fmt::Display for App {
                 }
             }
             AppMode::Menu => {
+                // write!(f, "\r\n")?;
                 write!(f, "Press T to start typing\r\n")?;
                 for n in &self.history {
                     write!(f, "Wpm : {} Accuracy : {}%\r\n", n.wpm, n.accuracy)?;
